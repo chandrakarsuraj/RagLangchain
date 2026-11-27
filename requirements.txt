@@ -29,6 +29,9 @@ langchain-community         # Community-contributed tools and loaders
 langchain-openai            # OpenAI-compatible layer (used by Portkey gateway)
 pydantic>=2.0.0             # Data validation and settings management
 pydantic-settings>=2.0.0   # Environment-based settings
+sqlalchemy>=2.1.9          # SQL ORM and schema metadata
+alembic>=1.16.0            # Database migrations
+psycopg[binary]>=3.3.9    # PostgreSQL driver with bundled libpq
 langhchain-openai
 
 # --- DATA INGESTION & DOCUMENT PARSING ---

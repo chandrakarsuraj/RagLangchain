@@ -28,9 +28,9 @@ dependencies = [
     "alembic>=1.16.0",
 ]
 
-[project.scripts]
-raglangchain = "raglangchain:main"
-
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "agents"

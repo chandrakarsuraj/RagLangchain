@@ -26,6 +26,8 @@ dependencies = [
     "psycopg[binary]>=3.3.9",
     "sqlalchemy>=2.1.9",
     "alembic>=1.16.0",
+    "langchain-pinecone>=0.2.13",
+    "langchain-postgres>=0.0.19",
 ]
 
 [build-system]

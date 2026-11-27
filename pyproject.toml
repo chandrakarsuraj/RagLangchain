@@ -13,6 +13,7 @@ dependencies = [
     "langchain-core>=1.8.5",
     "langchain-openai>=1.8.5",
     "python-dotenv>=1.2.4",
+    "pydantic-settings>=2.0.0",
     "pypdf>=4.0.0",
     "rich>=15.0.0",
     "langchain-text-splitters>=1.2.0",

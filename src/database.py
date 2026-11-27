@@ -7,20 +7,31 @@ from psycopg import Connection
 from config import settings
 
 
-def _get_psycopg_dsn() -> str:
-    database_url = settings().database_url
+def get_sqlalchemy_database_url(database_url: str | None = None) -> str:
+    """Return DATABASE_URL normalized for SQLAlchemy's psycopg 3 driver."""
+    database_url = database_url or settings().database_url
     if not database_url:
         raise RuntimeError(
             "DATABASE_URL is not configured. Set it in the environment or .env."
         )
 
-    # SQLAlchemy-style URLs are accepted by Alembic but psycopg expects a
-    # PostgreSQL DSN without the driver suffix.
-    for sqlalchemy_scheme in ("postgresql+psycopg://", "postgres+psycopg://"):
-        if database_url.startswith(sqlalchemy_scheme):
-            return database_url.replace(sqlalchemy_scheme, "postgresql://", 1)
+    if database_url.startswith("postgresql+psycopg://"):
+        return database_url
 
-    return database_url
+    for scheme in ("postgresql://", "postgres://", "postgres+psycopg://"):
+        if database_url.startswith(scheme):
+            return database_url.replace(scheme, "postgresql+psycopg://", 1)
+
+    raise ValueError(
+        "DATABASE_URL must be a PostgreSQL URL, such as "
+        "postgresql+psycopg://user:password@host:5432/database."
+    )
+
+
+def _get_psycopg_dsn() -> str:
+    # psycopg.connect() accepts the PostgreSQL DSN without SQLAlchemy's driver suffix.
+    sqlalchemy_url = get_sqlalchemy_database_url()
+    return sqlalchemy_url.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
 @contextmanager

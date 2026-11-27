@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     s3_bucket: str | None = None
 
     pinecone_api_key: str | None = None
+    pinecone_index_name: str | None = None
     pinecone_index_host: str | None = None
     pinecone_cloud: str | None = None
     pinecone_region: str | None = None
@@ -31,8 +32,8 @@ class Settings(BaseSettings):
     min_relevance : float=0.25
     hitl_enable : bool = True
     memory_turns:int =6
-    embedding_moel: str = ""
-    embedding_dim : int =1024
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dim: int = 1024
 
 def settings()-> Settings:
     return Settings()

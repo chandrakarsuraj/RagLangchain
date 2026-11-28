@@ -1,12 +1,15 @@
 """Streamlit UI for document upload and retrieval-augmented chat."""
 
 import logging
+from pathlib import Path
+import time
 from typing import Any
 from uuid import uuid4
 
 import boto3
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from botocore.exceptions import BotoCoreError, ClientError
 from langgraph_sdk import get_sync_client
 
@@ -14,10 +17,78 @@ from src.config import settings
 
 logger = logging.getLogger(__name__)
 
+_firebase_auth_component = components.declare_component(
+    "firebase_auth",
+    path=str(Path(__file__).parent / "src" / "ui" / "firebase_auth"),
+)
+
 
 @st.cache_resource
 def _get_langgraph_client(api_url: str, api_key: str | None):
     return get_sync_client(url=api_url, api_key=api_key, timeout=30)
+
+
+def _resolve_firebase_project_id(config: Any) -> str:
+    """Use an explicit project ID or infer it from Firebase's default auth domain."""
+    project_id = (config.firebase_project_id or "").strip()
+    if project_id:
+        return project_id
+
+    auth_domain = (config.firebase_auth_domain or "").strip().lower()
+    auth_domain = auth_domain.removeprefix("https://").removeprefix("http://").strip("/")
+    suffix = ".firebaseapp.com"
+    if auth_domain.endswith(suffix):
+        return auth_domain.removesuffix(suffix)
+    return ""
+
+
+def _lookup_firebase_user(config: Any, id_token: str) -> dict[str, str]:
+    """Validate a Firebase ID token through Firebase Auth's lookup endpoint."""
+    response = requests.post(
+        "https://identitytoolkit.googleapis.com/v1/accounts:lookup",
+        params={"key": config.firebase_api_key},
+        json={"idToken": id_token},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise ValueError("Firebase rejected the sign-in token.")
+
+    users = response.json().get("users", [])
+    if not users or not users[0].get("localId"):
+        raise ValueError("Firebase did not return a valid user account.")
+
+    firebase_user = users[0]
+    return {
+        "uid": firebase_user["localId"],
+        "email": firebase_user.get("email", ""),
+        "display_name": firebase_user.get("displayName", ""),
+    }
+
+
+def _active_firebase_user(config: Any) -> dict[str, Any] | None:
+    """Return the session user, periodically revalidating its ID token."""
+    user_session = st.session_state.get("firebase_auth_user")
+    if not isinstance(user_session, dict) or not user_session.get("id_token"):
+        return None
+
+    now = time.time()
+    if now - user_session.get("verified_at", 0) < 300:
+        return user_session
+
+    try:
+        verified_user = _lookup_firebase_user(config, user_session["id_token"])
+    except (ValueError, requests.RequestException):
+        st.session_state.pop("firebase_auth_user", None)
+        st.session_state.pop("chat_thread_id", None)
+        st.session_state["firebase_auth_notice"] = (
+            "Your Firebase session expired or could not be verified. Please sign in again."
+        )
+        return None
+
+    user_session.update(verified_user)
+    user_session["verified_at"] = now
+    st.session_state["firebase_auth_user"] = user_session
+    return user_session
 
 
 def _create_s3_client(config: Any):
@@ -297,6 +368,84 @@ def _chat_page() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Document QA", page_icon="📚", layout="wide")
+    config = settings()
+    firebase_config = {
+        "api_key": config.firebase_api_key,
+        "auth_domain": config.firebase_auth_domain,
+        "project_id": _resolve_firebase_project_id(config),
+    }
+    firebase_env_names = {
+        "api_key": "FIREBASE_API_KEY",
+        "auth_domain": "FIREBASE_AUTH_DOMAIN",
+        "project_id": "FIREBASE_PROJECT_ID",
+    }
+    missing_firebase_config = [
+        firebase_env_names[name]
+        for name, value in firebase_config.items()
+        if not value
+    ]
+    if missing_firebase_config:
+        st.error(
+            "Firebase login is not configured. Missing: "
+            + ", ".join(missing_firebase_config)
+            + ". Add the exact variable names to .env."
+        )
+        return
+
+    user = _active_firebase_user(config)
+    if user:
+        auth_result = _firebase_auth_component(
+            **firebase_config,
+            authenticated=True,
+            key="firebase_auth_gate",
+            default=None,
+        )
+    else:
+        st.title("Sign in to Document QA")
+        st.write("Sign in or create an account to access file uploads and chat.")
+        notice = st.session_state.pop("firebase_auth_notice", None)
+        if notice:
+            st.warning(notice)
+        auth_result = _firebase_auth_component(
+            **firebase_config,
+            authenticated=False,
+            key="firebase_auth_gate",
+            default=None,
+        )
+
+    if isinstance(auth_result, dict) and auth_result.get("signed_out"):
+        st.session_state.pop("firebase_auth_user", None)
+        st.session_state.pop("firebase_last_token", None)
+        st.session_state.pop("chat_thread_id", None)
+        st.rerun()
+
+    if not user and isinstance(auth_result, dict):
+        id_token = auth_result.get("id_token")
+        if id_token and id_token != st.session_state.get("firebase_last_token"):
+            st.session_state["firebase_last_token"] = id_token
+            try:
+                verified_user = _lookup_firebase_user(config, id_token)
+            except ValueError:
+                st.error("Firebase could not verify this sign-in. Please try again.")
+            except requests.RequestException:
+                st.error("Could not contact Firebase to verify your sign-in.")
+            else:
+                st.session_state["firebase_auth_user"] = {
+                    **verified_user,
+                    "id_token": id_token,
+                    "verified_at": time.time(),
+                }
+                st.session_state.pop("chat_thread_id", None)
+                st.rerun()
+        elif auth_result.get("error"):
+            st.error(f"Sign-in failed ({auth_result['error']}).")
+
+    if not user:
+        return
+
+    st.sidebar.caption(
+        f"Signed in as {user.get('email') or user.get('display_name') or user['uid']}"
+    )
     pages = [
         st.Page(_upload_page, title="Upload files", icon="📤", default=True),
         st.Page(_chat_page, title="Chat", icon="💬"),

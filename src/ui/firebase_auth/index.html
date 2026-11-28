@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 8px 4px; background: transparent; color: inherit; }
+    .panel { max-width: 520px; margin: 0 auto; padding: 22px; border: 1px solid #7775; border-radius: 14px; }
+    h3 { margin: 0 0 8px; }
+    p { opacity: .78; margin: 4px 0 18px; }
+    label { display: block; margin: 12px 0 5px; font-size: .92rem; }
+    input { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #8888; border-radius: 8px; background: transparent; color: inherit; }
+    button { cursor: pointer; border: 1px solid #8888; border-radius: 8px; padding: 10px 14px; background: transparent; color: inherit; font: inherit; }
+    button.primary { width: 100%; margin-top: 16px; background: #2563eb; border-color: #2563eb; color: white; font-weight: 600; }
+    button.google { width: 100%; margin-top: 10px; }
+    button.link { border: 0; padding: 6px 8px; color: #2563eb; }
+    .switch { display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: 14px; }
+    .error { min-height: 1.2em; margin-top: 12px; color: #d33; font-size: .9rem; overflow-wrap: anywhere; }
+    .signout { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const root = document.getElementById("root");
+    let auth = null;
+    let mode = "signin";
+
+    function sendValue(value) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setComponentValue",
+        value,
+        dataType: "json"
+      }, "*");
+    }
+
+    function setHeight() {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setFrameHeight",
+        height: Math.max(document.body.scrollHeight, 100)
+      }, "*");
+    }
+
+    function renderError(error) {
+      const errorBox = document.getElementById("auth-error");
+      const safeCode = error && error.code ? error.code : "auth/operation-failed";
+      if (errorBox) errorBox.textContent = "Authentication failed: " + safeCode;
+      sendValue({ error: safeCode });
+      setHeight();
+    }
+
+    async function sendAuthenticatedUser(user, provider) {
+      const idToken = await user.getIdToken(true);
+      sendValue({
+        id_token: idToken,
+        provider,
+        signed_in: true
+      });
+    }
+
+    function renderLogin() {
+      root.innerHTML = `
+        <section class="panel">
+          <h3 id="heading">Sign in</h3>
+          <p>Use your email or Google account to continue.</p>
+          <div id="name-row" hidden>
+            <label for="display-name">Name</label>
+            <input id="display-name" autocomplete="name" maxlength="100">
+          </div>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required minlength="6">
+          <button class="primary" id="email-submit" type="button">Sign in with email</button>
+          <button class="google" id="google-submit" type="button">Continue with Google</button>
+          <div class="switch">
+            <span id="switch-copy">Need an account?</span>
+            <button class="link" id="switch-mode" type="button">Create account</button>
+          </div>
+          <div class="error" id="auth-error" role="status"></div>
+        </section>`;
+
+      const heading = document.getElementById("heading");
+      const nameRow = document.getElementById("name-row");
+      const password = document.getElementById("password");
+      const submit = document.getElementById("email-submit");
+      const switchCopy = document.getElementById("switch-copy");
+      const switchButton = document.getElementById("switch-mode");
+      const errorBox = document.getElementById("auth-error");
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        const signup = mode === "signup";
+        heading.textContent = signup ? "Create your account" : "Sign in";
+        nameRow.hidden = !signup;
+        password.autocomplete = signup ? "new-password" : "current-password";
+        submit.textContent = signup ? "Create account" : "Sign in with email";
+        switchCopy.textContent = signup ? "Already registered?" : "Need an account?";
+        switchButton.textContent = signup ? "Sign in" : "Create account";
+        errorBox.textContent = "";
+        setHeight();
+      }
+
+      switchButton.addEventListener("click", () => {
+        setMode(mode === "signin" ? "signup" : "signin");
+      });
+
+      submit.addEventListener("click", async () => {
+        errorBox.textContent = "";
+        const email = document.getElementById("email").value.trim();
+        const passwordValue = password.value;
+        if (!email || !passwordValue) {
+          errorBox.textContent = "Enter both email and password.";
+          return;
+        }
+        submit.disabled = true;
+        try {
+          let credential;
+          if (mode === "signup") {
+            credential = await auth.createUserWithEmailAndPassword(email, passwordValue);
+            const displayName = document.getElementById("display-name").value.trim();
+            if (displayName) await credential.user.updateProfile({ displayName });
+          } else {
+            credential = await auth.signInWithEmailAndPassword(email, passwordValue);
+          }
+          await sendAuthenticatedUser(credential.user, "password");
+        } catch (error) {
+          renderError(error);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      document.getElementById("google-submit").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const errorBox = document.getElementById("auth-error");
+        errorBox.textContent = "";
+        button.disabled = true;
+        try {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: "select_account" });
+          const credential = await auth.signInWithPopup(provider);
+          await sendAuthenticatedUser(credential.user, "google");
+        } catch (error) {
+          renderError(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      setHeight();
+    }
+
+    function renderSignedIn() {
+      root.innerHTML = `
+        <section class="panel signout">
+          <span>Signed in. You can use the upload and chat pages.</span>
+          <button id="signout" type="button">Sign out</button>
+          <div class="error" id="auth-error" role="status"></div>
+        </section>`;
+      document.getElementById("signout").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          await auth.signOut();
+          sendValue({ signed_out: true });
+        } catch (error) {
+          renderError(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      setHeight();
+    }
+
+    function handleRender(args) {
+      if (!args || !args.api_key || !args.auth_domain || !args.project_id) {
+        root.innerHTML = '<section class="panel"><div class="error">Firebase auth is not configured. Set the Firebase web API key, auth domain, and project ID.</div></section>';
+        setHeight();
+        return;
+      }
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp({
+            apiKey: args.api_key,
+            authDomain: args.auth_domain,
+            projectId: args.project_id
+          });
+        }
+        auth = firebase.auth();
+        auth.useDeviceLanguage();
+        if (args.authenticated) renderSignedIn();
+        else renderLogin();
+      } catch (error) {
+        root.innerHTML = '<section class="panel"><div class="error">Firebase could not initialize. Check the Firebase web configuration.</div></section>';
+        setHeight();
+      }
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "streamlit:render") {
+        handleRender(event.data.args);
+      }
+    });
+
+    window.parent.postMessage({
+      isStreamlitMessage: true,
+      type: "streamlit:componentReady",
+      apiVersion: 1
+    }, "*");
+  </script>
+</body>
+</html>

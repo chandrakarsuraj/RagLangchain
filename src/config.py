@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     min_relevance : float=0.25
     hitl_enable : bool = True
     memory_turns:int =6
+    chat_model: str = "gpt-4.1"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1024
 

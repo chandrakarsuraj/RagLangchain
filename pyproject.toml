@@ -12,6 +12,8 @@ dependencies = [
     "langchain-community>=0.4.2",
     "langchain-core>=1.8.5",
     "langchain-openai>=1.8.5",
+    "langgraph>=1.0,<2.0",
+    "langgraph-checkpoint-postgres>=3.2.1,<4.0",
     "python-dotenv>=1.2.4",
     "pydantic-settings>=2.0.0",
     "pypdf>=4.0.0",
@@ -28,6 +30,7 @@ dependencies = [
     "alembic>=1.16.0",
     "langchain-pinecone>=0.2.13",
     "langchain-postgres>=0.0.19",
+    "langgraph-cli[inmem]>=0.4.44",
 ]
 
 [build-system]

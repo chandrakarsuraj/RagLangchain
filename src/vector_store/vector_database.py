@@ -33,17 +33,22 @@ def get_vector_store(collection_name: str = "raglangchain") -> PGVector:
     if not normalized_collection_name:
         raise ValueError("collection_name must be a non-empty string.")
 
-    embeddings = OpenAIEmbeddings(
-        model=config.embedding_model,
-        dimensions=config.embedding_dim,
-        api_key=config.openai_api_key,
-    )
 
     return PGVector(
-        embeddings=embeddings,
+        embeddings=get_embedding(),
         collection_name=normalized_collection_name,
         connection=get_sqlalchemy_database_url(config.database_url),
         embedding_length=config.embedding_dim,
         use_jsonb=True,
         create_extension=True,
     )
+
+
+def get_embedding():
+    config = settings()
+    embeddings = OpenAIEmbeddings(
+        model=config.embedding_model,
+        dimensions=config.embedding_dim,
+        api_key=config.openai_api_key,
+    )
+    return embeddings

@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     aws_region: str | None = None
     s3_bucket: str | None = None
 
+    s3_upload_prefix: str = "uploads"
+    ingest_worker_url: str | None = None
+    ingest_worker_api_key: str | None = None
+
+    langgraph_api_url: str = "http://127.0.0.1:2024"
+    langgraph_api_key: str | None = None
+    langgraph_assistant_id: str = "rag_agent"
+    vector_collection_name: str = "raglangchain"
+
     pinecone_api_key: str | None = None
     pinecone_index_name: str | None = None
     pinecone_index_host: str | None = None

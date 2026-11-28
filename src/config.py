@@ -45,5 +45,11 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1024
 
+
+    firebase_api_key :str = ""
+    firebase_auth_domain: str = ""
+    firebase_project_id: str = ""
+
+    
 def settings()-> Settings:
     return Settings()
